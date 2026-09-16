@@ -66,8 +66,18 @@ export async function registerRoutes(
   );
 
   // Workflows
+  app.get("/api/workflows", async (_req: Request, res: Response) => {
+    const list = Array.from((storage as any).workflows?.values?.() ?? []);
+    return res.json(list);
+  });
+
   app.post("/api/workflows", requireAuth, async (req: Request, res: Response) => {
-    const w = await storage.createWorkflow(req.body);
+    const w = await storage.createWorkflow({
+      ...req.body,
+      stage: req.body.stage ?? "engineering",
+      currentOwner: req.body.currentOwner ?? "VIE",
+      metadata: req.body.metadata ?? { handoff: "Engineering -> PCL" },
+    });
     return sendCreated(res, w);
   });
 
@@ -75,6 +85,45 @@ export async function registerRoutes(
     const w = await storage.getWorkflow(req.params.id);
     if (!w) return res.status(404).json({ message: "not found" });
     return res.json(w);
+  });
+
+  app.patch("/api/workflows/:id/stage", async (req: Request, res: Response) => {
+    const workflow = await storage.getWorkflow(req.params.id);
+    if (!workflow) return res.status(404).json({ message: "not found" });
+
+    const next = {
+      ...workflow,
+      stage: req.body.stage ?? workflow.stage ?? "engineering",
+      currentOwner: req.body.currentOwner ?? workflow.currentOwner ?? "VIE",
+      status: req.body.status ?? workflow.status,
+      updatedAt: new Date().toISOString(),
+    } as any;
+
+    (storage as any).workflows.set(req.params.id, next);
+    return res.json(next);
+  });
+
+  app.get("/api/workflows/:id/cost-summary", async (req: Request, res: Response) => {
+    const workflow = await storage.getWorkflow(req.params.id);
+    if (!workflow) return res.status(404).json({ message: "not found" });
+
+    const bomItems = await storage.listBomItemsForWorkflow(req.params.id);
+    const costs = await Promise.all(
+      bomItems.map(async (item) => storage.addCost({ bomItemId: item.id, initialCost: 0, submittedCost: 0, rocCost: 0, sbcCost: 0, estCost: 0, costDelta: 0 }))
+    );
+
+    const summary = {
+      workflowId: workflow.id,
+      stage: workflow.stage ?? "engineering",
+      currentOwner: workflow.currentOwner ?? "VIE",
+      totalInitialCost: costs.reduce((sum, cost) => sum + (cost.initialCost ?? 0), 0),
+      totalSubmittedCost: costs.reduce((sum, cost) => sum + (cost.submittedCost ?? 0), 0),
+      totalRocmCost: costs.reduce((sum, cost) => sum + (cost.rocCost ?? 0), 0),
+      totalSbcCost: costs.reduce((sum, cost) => sum + (cost.sbcCost ?? 0), 0),
+      totalEstimationCost: costs.reduce((sum, cost) => sum + (cost.estCost ?? 0), 0),
+    };
+
+    return res.json(summary);
   });
 
   // Tasks

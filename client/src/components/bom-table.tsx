@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ChevronRight, ChevronDown, Pencil, Trash2, MessageSquare } from "lucide-react";
 import { useState } from "react";
 
@@ -47,13 +48,22 @@ export interface BOMItem {
 interface BOMTableProps {
   data: BOMItem[];
   role: string;
+  onRowChange?: (rowId: string, field: keyof BOMItem, value: number | string | null) => void;
 }
 
-export function BOMTable({ data,role }: BOMTableProps) {
-  const showCost = role === "PCL" || role === "CDM";
-  const showAction = showCost || role === "SE";
+export function BOMTable({ data, role, onRowChange }: BOMTableProps) {
+  const canEditCosts = role === "SE" || role === "PCL";
+  const showCost = canEditCosts || role === "CDM";
+  const showAction = canEditCosts;
   const isCDM = role === "CDM";
   const isPCL = role === "PCL";
+  const isSE = role === "SE";
+
+  const updateNumberField = (rowId: string, field: keyof BOMItem, value: string) => {
+    if (!onRowChange) return;
+    const nextValue = value === "" ? null : Number(value);
+    onRowChange(rowId, field, Number.isFinite(nextValue) ? nextValue : null);
+  };
 
   return (
     <div className="rounded-md border">
@@ -92,10 +102,10 @@ export function BOMTable({ data,role }: BOMTableProps) {
             <TableHead className="border-r text-center">Qty</TableHead>
             <TableHead className="border-r">End Item</TableHead>
             {showCost && (
-              <TableHead className="border-r text-right">{isPCL ? "Initial Cost" : "ROCM Cost"}</TableHead>
+              <TableHead className="border-r text-right">{isPCL || isSE ? "Initial Cost" : "ROCM Cost"}</TableHead>
             )}
             {showCost && (
-              <TableHead className="border-r text-right">{isPCL ? "Updated Cost" : "SBC Cost"}</TableHead>
+              <TableHead className="border-r text-right">{isPCL || isSE ? "Updated Cost" : "SBC Cost"}</TableHead>
             )}
 
             <TableHead className="text-center border-r text-green-700">ADD</TableHead>
@@ -105,10 +115,13 @@ export function BOMTable({ data,role }: BOMTableProps) {
             <TableHead className="border-r text-center">Qty</TableHead>
             <TableHead className="border-r">End Item</TableHead>
             {showCost && (
-              <TableHead className="border-r text-right">{isPCL ? "Cost" : "Estimation Cost"}</TableHead>
+              <TableHead className="border-r text-right">{isPCL || isSE ? "ROCM Cost" : "Estimation Cost"}</TableHead>
             )}
             {showCost && (
-              <TableHead className="border-r text-right">{isCDM ? "Investment" : "Total"}</TableHead>
+              <TableHead className="border-r text-right">{isPCL || isSE ? "SBC Cost" : isCDM ? "Investment" : "Total"}</TableHead>
+            )}
+            {(isPCL || isSE) && (
+              <TableHead className="border-r text-right">Estimation Cost</TableHead>
             )}
 
             <TableHead />
@@ -133,10 +146,32 @@ export function BOMTable({ data,role }: BOMTableProps) {
               <TableCell className="text-xs text-center border-r">{row.outgoingQtyPerVehicle ?? "-"}</TableCell>
               <TableCell className="text-xs border-r">{row.outgoingVehicleEndItem || "-"}</TableCell>
               {showCost && (
-                <TableCell className="text-xs text-right border-r">{(row.initialCost ?? row.outgoingCost) ? `₹${(row.initialCost ?? row.outgoingCost ?? 0).toLocaleString()}` : "-"}</TableCell>
+                <TableCell className="text-xs text-right border-r p-1">
+                  {isPCL || isSE ? (
+                    <Input
+                      type="number"
+                      value={row.initialCost ?? ""}
+                      onChange={(e) => updateNumberField(row.id, "initialCost", e.target.value)}
+                      className="h-7 text-right text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0"
+                    />
+                  ) : (
+                    <span>{(row.initialCost ?? row.outgoingCost) ? `₹${(row.initialCost ?? row.outgoingCost ?? 0).toLocaleString()}` : "-"}</span>
+                  )}
+                </TableCell>
               )}
               {showCost && (
-                <TableCell className="text-xs text-right border-r">{(row.updatedCost ?? row.outgoingCost) ? `₹${(row.updatedCost ?? row.outgoingCost ?? 0).toLocaleString()}` : "-"}</TableCell>
+                <TableCell className="text-xs text-right border-r p-1">
+                  {isPCL || isSE ? (
+                    <Input
+                      type="number"
+                      value={row.updatedCost ?? ""}
+                      onChange={(e) => updateNumberField(row.id, "updatedCost", e.target.value)}
+                      className="h-7 text-right text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0"
+                    />
+                  ) : (
+                    <span>{(row.updatedCost ?? row.outgoingCost) ? `₹${(row.updatedCost ?? row.outgoingCost ?? 0).toLocaleString()}` : "-"}</span>
+                  )}
+                </TableCell>
               )}
 
               <TableCell className="text-center text-xs font-bold text-green-600 border-r">{(row.status === "Add" || row.status === "Modify") && row.incomingPartNo ? "ADD" : ""}</TableCell>
@@ -146,21 +181,67 @@ export function BOMTable({ data,role }: BOMTableProps) {
               <TableCell className="text-xs text-center border-r">{row.incomingQtyPerVehicle ?? "-"}</TableCell>
               <TableCell className="text-xs border-r">{row.incomingVehicleEndItem || "-"}</TableCell>
               {showCost && (
-                <TableCell className="text-xs text-right border-r">{(row.incomingCost ?? row.rocmCost ?? row.sbcCost) ? `₹${(row.incomingCost ?? row.rocmCost ?? row.sbcCost ?? 0).toLocaleString()}` : "-"}</TableCell>
+                <TableCell className="text-xs text-right border-r p-1">
+                  {isPCL || isSE ? (
+                    <Input
+                      type="number"
+                      value={row.rocmCost ?? ""}
+                      onChange={(e) => updateNumberField(row.id, "rocmCost", e.target.value)}
+                      className="h-7 text-right text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0"
+                    />
+                  ) : (
+                    <span>{(row.incomingCost ?? row.rocmCost ?? row.sbcCost) ? `₹${(row.incomingCost ?? row.rocmCost ?? row.sbcCost ?? 0).toLocaleString()}` : "-"}</span>
+                  )}
+                </TableCell>
               )}
               {showCost && (
-                <TableCell className="text-xs text-right border-r">{(row.investmentAmount ?? row.estimationCost ?? row.sbcCost) ? `₹${(row.investmentAmount ?? row.estimationCost ?? row.sbcCost ?? 0).toLocaleString()}` : "-"}</TableCell>
+                <TableCell className="text-xs text-right border-r p-1">
+                  {isPCL || isSE ? (
+                    <Input
+                      type="number"
+                      value={row.sbcCost ?? ""}
+                      onChange={(e) => updateNumberField(row.id, "sbcCost", e.target.value)}
+                      className="h-7 text-right text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0"
+                    />
+                  ) : (
+                    <span>{(row.investmentAmount ?? row.estimationCost ?? row.sbcCost) ? `₹${(row.investmentAmount ?? row.estimationCost ?? row.sbcCost ?? 0).toLocaleString()}` : "-"}</span>
+                  )}
+                </TableCell>
+              )}
+              {(isPCL || isSE) && (
+                <TableCell className="text-xs text-right border-r p-1">
+                  <Input
+                    type="number"
+                    value={row.estimationCost ?? ""}
+                    onChange={(e) => updateNumberField(row.id, "estimationCost", e.target.value)}
+                    className="h-7 text-right text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0"
+                  />
+                </TableCell>
               )}
 
-              <TableCell className="text-xs truncate max-w-[180px]">
-                {(isPCL ? row.pclRemarks : row.remarks) || <span className="italic opacity-40">No remarks</span>}
+              <TableCell className="text-xs border-r p-1 align-top">
+                {isPCL ? (
+                  <Input
+                    value={row.pclRemarks ?? ""}
+                    onChange={(e) => onRowChange?.(row.id, "pclRemarks", e.target.value || null)}
+                    placeholder="Add PCL remarks"
+                    className="h-7 text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0 w-full"
+                  />
+                ) : (
+                  <Input
+                    value={row.remarks ?? ""}
+                    onChange={(e) => onRowChange?.(row.id, "remarks", e.target.value || null)}
+                    placeholder={isSE ? "Add engineering remarks" : "Add remarks"}
+                    className="h-7 text-xs bg-transparent border-0 shadow-none focus-visible:ring-0 p-0 w-full"
+                  />
+                )}
               </TableCell>
 
-              {showAction && <TableCell className="text-right">
-                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button variant="ghost" size="icon" className="h-6 w-6"><MessageSquare className="h-3 w-3" /></Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6"><Pencil className="h-3 w-3" /></Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive"><Trash2 className="h-3 w-3" /></Button>
+              {showAction && <TableCell className="text-right align-top">
+                <div className="flex justify-end gap-1 opacity-100 transition-opacity">
+                  <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Comment"><MessageSquare className="h-3 w-3" /></Button>
+                  <Button type="button" variant="ghost" size="icon" className="h-6 w-6" title="Edit"><Pencil className="h-3 w-3" /></Button>
+                  <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Delete"><Trash2 className="h-3 w-3" /></Button>
                 </div>
               </TableCell>}
             </TableRow>

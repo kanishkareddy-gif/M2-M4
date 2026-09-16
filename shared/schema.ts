@@ -50,6 +50,9 @@ export const workflows = pgTable("workflows", {
   variantId: varchar("variant_id"),
   initiatorId: varchar("initiator_id").notNull(),
   status: text("status").notNull().default(sql`'initiated'`),
+  stage: text("stage").notNull().default(sql`'engineering'`),
+  currentOwner: text("current_owner").notNull().default(sql`'VIE'`),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").default(sql`now()`),
   updatedAt: timestamp("updated_at").default(sql`now()`),
 });
@@ -95,6 +98,7 @@ export const costs = pgTable("costs", {
   rocCost: integer("roc_cost"),
   sbcCost: integer("sbc_cost"),
   estCost: integer("est_cost"),
+  costDelta: integer("cost_delta"),
   remarks: text("remarks"),
 });
 

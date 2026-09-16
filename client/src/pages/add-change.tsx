@@ -169,7 +169,7 @@ export default function AddChange() {
 
   const roleMeta: Record<"SE" | "PCL" | "CDM" | "PM", { title: string; subtitle: string; action: string }> = {
     SE: { title: "My Tasks", subtitle: "Select a change request to start working on BOM content.", action: "Save Changes" },
-    PCL: { title: "PCL Cost Review", subtitle: "Review outgoing vs incoming BOM cost impact and submit the assessment.", action: "Submit Cost Review" },
+    PCL: { title: "PCL Cost Review", subtitle: "Engineering phase is complete and the workflow has been assigned to the PCL team for BOM cost review.", action: "Submit Cost Review" },
     CDM: { title: "CDM Investment Review", subtitle: "Review the completed PCL assessment and add investment details.", action: "Submit Investment Review" },
     PM: { title: "Monitoring View", subtitle: "Read-only overview of project and variant progress.", action: "View Only" },
   };
@@ -284,6 +284,27 @@ export default function AddChange() {
     }
   };
 
+  const handleBOMRowChange = (rowId: string, field: keyof BOMItem, value: number | string | null) => {
+    setBomData(prev => prev.map(row => row.id === rowId ? { ...row, [field]: value } : row));
+  };
+
+  const pclSummary = useMemo(() => {
+    const initialCost = bomData.reduce((sum, row) => sum + (row.initialCost ?? 0), 0);
+    const updatedCost = bomData.reduce((sum, row) => sum + (row.updatedCost ?? 0), 0);
+    const rocmCost = bomData.reduce((sum, row) => sum + (row.rocmCost ?? 0), 0);
+    const sbcCost = bomData.reduce((sum, row) => sum + (row.sbcCost ?? 0), 0);
+    const estimationCost = bomData.reduce((sum, row) => sum + (row.estimationCost ?? 0), 0);
+
+    return {
+      initialCost,
+      updatedCost,
+      rocmCost,
+      sbcCost,
+      estimationCost,
+      delta: updatedCost - initialCost,
+    };
+  }, [bomData]);
+
   // Task List View
   if (!activeRequest) {
     return (
@@ -296,6 +317,12 @@ export default function AddChange() {
             </p>
           </div>
         </div>
+
+        {role === "PCL" && (
+          <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm text-primary">
+            Workflow stage: Engineering complete → assigned to PCL for cost assessment and review.
+          </div>
+        )}
 
         <div className="grid gap-6">
           {roleTasks.map((task) => (
@@ -500,27 +527,35 @@ export default function AddChange() {
              </div>
 
              <div className="flex-1 overflow-auto p-0 bg-background">
-               <BOMTable data={filteredBOMData} role={role}/>
+               <BOMTable data={filteredBOMData} role={role} onRowChange={handleBOMRowChange} />
                
                {role === "PCL" && (
-                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-3">
+                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-5">
                    <div className="rounded-md border bg-white p-3">
                      <div className="text-xs text-muted-foreground">Initial Cost</div>
-                     <div className="mt-1 text-xl font-bold text-foreground">₹ 48,500</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ {pclSummary.initialCost.toLocaleString()}</div>
                    </div>
                    <div className="rounded-md border bg-white p-3">
                      <div className="text-xs text-muted-foreground">Submitted / Updated Cost</div>
-                     <div className="mt-1 text-xl font-bold text-foreground">₹ 52,900</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ {pclSummary.updatedCost.toLocaleString()}</div>
                    </div>
                    <div className="rounded-md border bg-white p-3">
-                     <div className="text-xs text-muted-foreground">Cost Delta</div>
-                     <div className="mt-1 text-xl font-bold text-green-600">₹ 4,400</div>
+                     <div className="text-xs text-muted-foreground">ROCM Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ {pclSummary.rocmCost.toLocaleString()}</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">SBC Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ {pclSummary.sbcCost.toLocaleString()}</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Estimation Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ {pclSummary.estimationCost.toLocaleString()}</div>
                    </div>
                  </div>
                )}
 
                {role === "CDM" && (
-                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-3">
+                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-4">
                    <div className="rounded-md border bg-white p-3">
                      <div className="text-xs text-muted-foreground">ROCM Cost</div>
                      <div className="mt-1 text-xl font-bold text-foreground">₹ 12,500</div>
@@ -532,6 +567,31 @@ export default function AddChange() {
                    <div className="rounded-md border bg-white p-3">
                      <div className="text-xs text-muted-foreground">Estimation Cost</div>
                      <div className="mt-1 text-xl font-bold text-foreground">₹ 20,800</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Investment Required</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 16,900</div>
+                   </div>
+                 </div>
+               )}
+
+               {role === "PM" && (
+                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-4">
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Overall Completion</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">78%</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Pending Activities</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">3</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Completed Activities</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">12</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Current Stage</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">CDM Review</div>
                    </div>
                  </div>
                )}

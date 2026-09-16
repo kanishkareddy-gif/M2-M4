@@ -144,6 +144,9 @@ export class MemStorage implements IStorage {
       variantId: w.variantId ?? null,
       initiatorId: w.initiatorId ?? "",
       status: w.status ?? "initiated",
+      stage: (w as any).stage ?? "engineering",
+      currentOwner: (w as any).currentOwner ?? "VIE",
+      metadata: (w as any).metadata ?? null,
       createdAt: w.createdAt ?? new Date().toISOString(),
       updatedAt: w.updatedAt ?? new Date().toISOString(),
     } as Workflow;
@@ -225,6 +228,7 @@ export class MemStorage implements IStorage {
       rocCost: c.rocCost ?? null,
       sbcCost: c.sbcCost ?? null,
       estCost: c.estCost ?? null,
+      costDelta: c.costDelta ?? null,
       remarks: c.remarks ?? null,
     } as Cost;
     this.costs.set(id, cost);
