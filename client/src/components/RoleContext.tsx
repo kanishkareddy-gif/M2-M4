@@ -12,9 +12,6 @@ export const RoleContext = createContext<RoleContextType | undefined>(
 );
 
 export function useRole() {
-    console.log("useRole() called"); 
-    console.log("useContext is", useContext);
-
   const context = useContext(RoleContext);
 
   if (!context) {

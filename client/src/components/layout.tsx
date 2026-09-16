@@ -41,7 +41,7 @@ export default function Layout({ children }: LayoutProps) {
       name: "Add Change Content",
       href: "/add-change-content",
       icon: PlusCircle,
-      roles: ["SE"],
+      roles: ["SE", "PCL", "CDM"],
     },
     {
       name: "View Change Content",

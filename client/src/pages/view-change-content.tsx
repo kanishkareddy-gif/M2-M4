@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { BOMTable } from "@/components/bom-table";
 import type { Role } from "@/components/RoleContext";
 
@@ -271,6 +271,7 @@ export default function ViewChangeContent() {
 
   const isPCL = role === "PCL";
   const isPM = role === "PM";
+  const isCDM = role === "CDM";
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string>("ALL");
 
@@ -282,6 +283,28 @@ export default function ViewChangeContent() {
   }, [role]);
 
   const selectedRequest = activeRequests.find(req => req.req_id === selectedRequestId);
+  const projectStageProgress = selectedRequest ? {
+    stage: selectedRequest.status,
+    percent: selectedRequest.status === "Completed" ? 100 : selectedRequest.status === "For Review" ? 75 : selectedRequest.status === "In Progress" ? 55 : selectedRequest.status === "Rejected" ? 20 : 30,
+    currentOwner: selectedRequest.status === "Completed"
+      ? "Completed"
+      : selectedRequest.status === "For Review"
+        ? "PCL"
+        : selectedRequest.status === "In Progress"
+          ? "System Engineer"
+          : selectedRequest.status === "Rejected"
+            ? "VIE"
+            : "Vehicle Integration Engineer",
+    pendingOn: selectedRequest.status === "Completed"
+      ? "Completed across all variants"
+      : selectedRequest.status === "For Review"
+        ? "Awaiting final PCL review and approval"
+        : selectedRequest.status === "In Progress"
+          ? "With System Engineer for detailed evaluation"
+          : selectedRequest.status === "Rejected"
+            ? "Returned to VIE for rework"
+            : "Initiated and awaiting assignment",
+  } : null;
 
   const projects = Array.from(
     new Set(activeRequests.map(r => r.project))
@@ -294,6 +317,38 @@ export default function ViewChangeContent() {
   const activeCount = filteredRequests.filter(r => r.status !== "Completed").length;
   const completedCount = filteredRequests.filter(r => r.status === "Completed").length;
 
+  const vieWorkflowProgress = role === "VIE"
+    ? (() => {
+        const relevant = filteredRequests.length > 0 ? filteredRequests : activeRequests;
+        const statusOrder = ["Completed", "For Review", "In Progress", "Initiated", "Rejected"];
+        const status = statusOrder.find(status => relevant.some(req => req.status === status)) ?? "Initiated";
+        const currentOwner = status === "Completed"
+          ? "Completed"
+          : status === "For Review"
+            ? "PCL"
+            : status === "In Progress"
+              ? "System Engineer"
+              : status === "Rejected"
+                ? "VIE"
+                : "Vehicle Integration Engineer";
+
+        return {
+          status,
+          percent: status === "Completed" ? 100 : status === "For Review" ? 75 : status === "In Progress" ? 55 : status === "Rejected" ? 20 : 30,
+          currentOwner,
+          pendingOn: status === "Completed"
+            ? "Completed across all active workflows"
+            : status === "For Review"
+              ? "Awaiting final PCL review"
+              : status === "In Progress"
+                ? "With System Engineer for evaluation"
+                : status === "Rejected"
+                  ? "Returned to VIE for rework"
+                  : "Waiting for gate assignment",
+        };
+      })()
+    : null;
+
   const getStatusColor = (status: string) => {
     switch(status) {
       case "Initiated": return "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50";
@@ -304,6 +359,44 @@ export default function ViewChangeContent() {
       return "bg-red-50 text-red-700 border-red-200 hover:bg-red-50";
       default: return "bg-secondary text-secondary-foreground hover:bg-secondary/80";
     }
+  };
+
+  const sortedRequests = useMemo(
+    () => [...filteredRequests].sort((a, b) => a.project.localeCompare(b.project)),
+    [filteredRequests]
+  );
+
+  const groupedRequests = useMemo(
+    () =>
+      sortedRequests.reduce<Record<string, typeof sortedRequests>>((acc, req) => {
+        acc[req.project] = [...(acc[req.project] ?? []), req];
+        return acc;
+      }, {}),
+    [sortedRequests]
+  );
+
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (role !== "VIE") return;
+
+    setExpandedProjects(prev => {
+      const next = { ...prev };
+      let changed = false;
+
+      Object.keys(groupedRequests).forEach(project => {
+        if (next[project] === undefined) {
+          next[project] = false;
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+  }, [role, groupedRequests]);
+
+  const toggleProject = (project: string) => {
+    setExpandedProjects(prev => ({ ...prev, [project]: !prev[project] }));
   };
 
   if (selectedRequestId && selectedRequest) {
@@ -324,41 +417,82 @@ export default function ViewChangeContent() {
            </div>
         </div>
 
-        {/* Detailed Dashboard for Selected Request */}
-        {isPCL &&<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-           <Card>
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium">Total Add Cost</CardTitle>
-               <ArrowUpRight className="h-4 w-4 text-green-500" />
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold text-green-600">₹ {selectedRequest.addCost.toLocaleString()}</div>
-               <p className="text-xs text-muted-foreground">Cost of new parts</p>
-             </CardContent>
-           </Card>
+        {projectStageProgress && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle>Workflow Progress</CardTitle>
+              <CardDescription>Current stage and pending handoff across the M2-M4 workflow.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Current Stage</span>
+                  <Badge variant="outline">{projectStageProgress.stage}</Badge>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-muted">
+                  <div className="h-2.5 rounded-full bg-primary" style={{ width: `${projectStageProgress.percent}%` }} />
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Currently with: <span className="font-medium text-foreground">{projectStageProgress.currentOwner}</span>
+                </div>
+                <div className="text-sm text-muted-foreground">Pending on: {projectStageProgress.pendingOn}</div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-           <Card>
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium">Total Delete Cost</CardTitle>
-               <ArrowDownRight className="h-4 w-4 text-red-500" />
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold text-red-600">₹ {selectedRequest.deleteCost.toLocaleString()}</div>
-               <p className="text-xs text-muted-foreground">Cost of removed parts</p>
-             </CardContent>
-           </Card>
+        {(isPCL || isCDM) && (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{isPCL ? "Total Add Cost" : "ROCM Cost"}</CardTitle>
+                <ArrowUpRight className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-green-600">₹ {selectedRequest.addCost.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">{isPCL ? "Cost of new parts" : "Approved model cost"}</p>
+              </CardContent>
+            </Card>
 
-           <Card className="bg-primary/5 border-primary/20">
-             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-               <CardTitle className="text-sm font-medium text-primary">Total Impact</CardTitle>
-               <IndianRupee  className="h-4 w-4 text-primary"/>
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold text-primary">₹ {(selectedRequest.addCost-selectedRequest.deleteCost).toLocaleString()}</div>
-               <p className="text-xs text-primary/70">Change in cost</p>
-             </CardContent>
-           </Card>
-        </div>}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{isPCL ? "Total Delete Cost" : "SBC Cost"}</CardTitle>
+                <ArrowDownRight className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-red-600">₹ {selectedRequest.deleteCost.toLocaleString()}</div>
+                <p className="text-xs text-muted-foreground">{isPCL ? "Cost of removed parts" : "Supplier base cost"}</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-primary/5 border-primary/20">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium text-primary">{isPCL ? "Total Impact" : "Estimation Cost"}</CardTitle>
+                <IndianRupee className="h-4 w-4 text-primary"/>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-primary">₹ {(isPCL ? selectedRequest.addCost - selectedRequest.deleteCost : selectedRequest.totalCost).toLocaleString()}</div>
+                <p className="text-xs text-primary/70">{isPCL ? "Change in cost" : "Projected investment value"}</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {isPM && (
+          <Card className="border-dashed border-muted-foreground/30 bg-muted/20">
+            <CardHeader>
+              <CardTitle>Project Manager Read-Only Summary</CardTitle>
+              <CardDescription>Monitoring view for workflow progress, pending activities, and completion status.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-3 text-sm">
+                <div className="rounded-md border bg-background p-3"><div className="text-muted-foreground">Stage</div><div className="mt-1 font-semibold">{selectedRequest.status}</div></div>
+                <div className="rounded-md border bg-background p-3"><div className="text-muted-foreground">Pending Activities</div><div className="mt-1 font-semibold">{selectedRequest.pending.length || "None"}</div></div>
+                <div className="rounded-md border bg-background p-3"><div className="text-muted-foreground">Completed Activities</div><div className="mt-1 font-semibold">{selectedRequest.completed.length}</div></div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
         
         {/* Placeholder for Detailed BOM Content Table */}
         <Card>
@@ -397,11 +531,6 @@ export default function ViewChangeContent() {
       </div>
     );
   }
-
-  const sortedRequests = [...filteredRequests].sort((a, b) =>
-    a.project.localeCompare(b.project)
-  );
-
 
   // Main Dashboard View
   return (
@@ -455,6 +584,44 @@ export default function ViewChangeContent() {
          </Card>
       </div>
 
+      {isPCL && (
+        <Card className="border-dashed border-primary/30 bg-primary/5">
+          <CardHeader>
+            <CardTitle>PCL Project Dashboard</CardTitle>
+            <CardDescription>Project-wise and system-wise comparison of cost delta across active workflows.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-md border bg-background p-3"><div className="text-xs text-muted-foreground">Projects in Review</div><div className="mt-2 text-2xl font-bold">3</div></div>
+              <div className="rounded-md border bg-background p-3"><div className="text-xs text-muted-foreground">Avg. Cost Delta</div><div className="mt-2 text-2xl font-bold">₹ 8,500</div></div>
+              <div className="rounded-md border bg-background p-3"><div className="text-xs text-muted-foreground">Pending Cost Assessments</div><div className="mt-2 text-2xl font-bold">2</div></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {vieWorkflowProgress && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardHeader>
+            <CardTitle>VIE Workflow Progress</CardTitle>
+            <CardDescription>Current stage ownership and pending handoff across the workflow.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Current Stage</span>
+              <Badge variant="outline">{vieWorkflowProgress.status}</Badge>
+            </div>
+            <div className="h-2.5 w-full rounded-full bg-muted">
+              <div className="h-2.5 rounded-full bg-primary" style={{ width: `${vieWorkflowProgress.percent}%` }} />
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Currently with: <span className="font-medium text-foreground">{vieWorkflowProgress.currentOwner}</span>
+            </div>
+            <div className="text-sm text-muted-foreground">Pending on: {vieWorkflowProgress.pendingOn}</div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Active Workflow Status (Tabular Format) */}
       <Card>
         <CardHeader>
@@ -478,38 +645,91 @@ export default function ViewChangeContent() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedRequests.map((req) => (
-                <TableRow
-                  key={req.req_id}
-                  onClick={() => setSelectedRequestId(req.req_id)}
-                  className="cursor-pointer hover:bg-muted/50"
-                >
+              {role === "VIE"
+                ? Object.entries(groupedRequests).map(([project, projectRequests]) => {
+                    const isExpanded = expandedProjects[project] ?? false;
+                    const projectStatus = projectRequests.some(req => req.status === "Completed")
+                      ? "Completed"
+                      : projectRequests.some(req => req.status === "For Review")
+                        ? "For Review"
+                        : projectRequests.some(req => req.status === "In Progress")
+                          ? "In Progress"
+                          : "Initiated";
 
-                  <TableCell className="font-medium">{req.project}</TableCell>
-                  <TableCell className="text-xs">{req.project_version}</TableCell>
+                    return (
+                      <Fragment key={project}>
+                        <TableRow
+                          onClick={() => toggleProject(project)}
+                          className="cursor-pointer bg-muted/10 hover:bg-muted/20"
+                        >
+                          <TableCell className="font-semibold">{project}</TableCell>
+                          <TableCell className="text-xs">{projectRequests[0]?.project_version}</TableCell>
+                          <TableCell className="text-sm font-medium text-muted-foreground">
+                            {projectRequests.length} variant{projectRequests.length > 1 ? "s" : ""}
+                          </TableCell>
+                          <TableCell className="text-xs">—</TableCell>
+                          <TableCell className="font-mono text-xs text-primary underline">Project Summary</TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-[10px] ${getStatusColor(projectStatus)}`}>
+                              {projectStatus}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">{projectRequests[0]?.assigned_to}</TableCell>
+                          <TableCell className="text-xs">{projectRequests[0]?.assigned_by}</TableCell>
+                          <TableCell className="text-xs">{projectRequests[0]?.assigned_date}</TableCell>
+                          <TableCell className="text-xs">{projectRequests[0]?.completed_date ?? "—"}</TableCell>
+                        </TableRow>
 
-                  <TableCell className="text-muted-foreground">{req.variant}</TableCell>
-                  <TableCell className="text-xs">{req.variant_version}</TableCell>
-
-                  <TableCell className="font-mono text-xs text-primary underline">
-                    {req.req_id}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={`text-[10px] ${getStatusColor(req.status)}`}>
-                      {req.status}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell className="text-xs">{req.assigned_to}</TableCell>
-                  <TableCell className="text-xs">{req.assigned_by}</TableCell>
-
-                  <TableCell className="text-xs">{req.assigned_date}</TableCell>
-                  <TableCell className="text-xs">
-                    {req.completed_date ?? "—"}
-                  </TableCell>
-                </TableRow>
-
-              ))}
+                        {isExpanded && projectRequests.map(req => (
+                          <TableRow
+                            key={req.req_id}
+                            onClick={event => {
+                              event.stopPropagation();
+                              setSelectedRequestId(req.req_id);
+                            }}
+                            className="cursor-pointer hover:bg-muted/50 bg-background"
+                          >
+                            <TableCell className="pl-8 text-muted-foreground">↳ Variant</TableCell>
+                            <TableCell className="text-xs">{req.project_version}</TableCell>
+                            <TableCell className="text-muted-foreground">{req.variant}</TableCell>
+                            <TableCell className="text-xs">{req.variant_version}</TableCell>
+                            <TableCell className="font-mono text-xs text-primary underline">{req.req_id}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className={`text-[10px] ${getStatusColor(req.status)}`}>
+                                {req.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs">{req.assigned_to}</TableCell>
+                            <TableCell className="text-xs">{req.assigned_by}</TableCell>
+                            <TableCell className="text-xs">{req.assigned_date}</TableCell>
+                            <TableCell className="text-xs">{req.completed_date ?? "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </Fragment>
+                    );
+                  })
+                : sortedRequests.map((req) => (
+                    <TableRow
+                      key={req.req_id}
+                      onClick={() => setSelectedRequestId(req.req_id)}
+                      className="cursor-pointer hover:bg-muted/50"
+                    >
+                      <TableCell className="font-medium">{req.project}</TableCell>
+                      <TableCell className="text-xs">{req.project_version}</TableCell>
+                      <TableCell className="text-muted-foreground">{req.variant}</TableCell>
+                      <TableCell className="text-xs">{req.variant_version}</TableCell>
+                      <TableCell className="font-mono text-xs text-primary underline">{req.req_id}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-[10px] ${getStatusColor(req.status)}`}>
+                          {req.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{req.assigned_to}</TableCell>
+                      <TableCell className="text-xs">{req.assigned_by}</TableCell>
+                      <TableCell className="text-xs">{req.assigned_date}</TableCell>
+                      <TableCell className="text-xs">{req.completed_date ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
             </TableBody>
           </Table>
         </CardContent>

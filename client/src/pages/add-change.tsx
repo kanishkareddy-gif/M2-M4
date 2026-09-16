@@ -167,6 +167,15 @@ export default function AddChange() {
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const roleMeta: Record<"SE" | "PCL" | "CDM" | "PM", { title: string; subtitle: string; action: string }> = {
+    SE: { title: "My Tasks", subtitle: "Select a change request to start working on BOM content.", action: "Save Changes" },
+    PCL: { title: "PCL Cost Review", subtitle: "Review outgoing vs incoming BOM cost impact and submit the assessment.", action: "Submit Cost Review" },
+    CDM: { title: "CDM Investment Review", subtitle: "Review the completed PCL assessment and add investment details.", action: "Submit Investment Review" },
+    PM: { title: "Monitoring View", subtitle: "Read-only overview of project and variant progress.", action: "View Only" },
+  };
+
+  const activeRoleMeta = roleMeta[role as keyof typeof roleMeta] ?? roleMeta.SE;
+
   const roleTasks = useMemo(() => {
     if (role === "SE") return tasksList;
     if (role === "PCL") return [{
@@ -281,9 +290,9 @@ export default function AddChange() {
       <div className="space-y-8 max-w-5xl mx-auto">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">My Tasks</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">{activeRoleMeta.title}</h1>
             <p className="text-muted-foreground mt-2">
-              Select a change request to start working on BOM content.
+              {activeRoleMeta.subtitle}
             </p>
           </div>
         </div>
@@ -476,20 +485,56 @@ export default function AddChange() {
 
                   <div className="w-px h-8 bg-border mx-1"></div>
 
-                  <Button
-                    onClick={handleSave}
-                    size="sm"
-                    variant="default"
-                    className="bg-primary text-white h-8 shadow-sm hover:bg-primary/90"
-                  >
-                    <Save className="h-3 w-3 mr-1" /> Save Changes
-                  </Button>
+                  {(role === "SE" || role === "PCL" || role === "CDM") && (
+                    <Button
+                      onClick={handleSave}
+                      size="sm"
+                      variant="default"
+                      className="bg-primary text-white h-8 shadow-sm hover:bg-primary/90"
+                    >
+                      <Save className="h-3 w-3 mr-1" /> {activeRoleMeta.action}
+                    </Button>
+                  )}
                 </div>
 
              </div>
 
              <div className="flex-1 overflow-auto p-0 bg-background">
-               <BOMTable data={filteredBOMData} role="SE"/>
+               <BOMTable data={filteredBOMData} role={role}/>
+               
+               {role === "PCL" && (
+                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-3">
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Initial Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 48,500</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Submitted / Updated Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 52,900</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Cost Delta</div>
+                     <div className="mt-1 text-xl font-bold text-green-600">₹ 4,400</div>
+                   </div>
+                 </div>
+               )}
+
+               {role === "CDM" && (
+                 <div className="grid gap-4 border-t bg-muted/5 p-4 md:grid-cols-3">
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">ROCM Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 12,500</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">SBC Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 8,300</div>
+                   </div>
+                   <div className="rounded-md border bg-white p-3">
+                     <div className="text-xs text-muted-foreground">Estimation Cost</div>
+                     <div className="mt-1 text-xl font-bold text-foreground">₹ 20,800</div>
+                   </div>
+                 </div>
+               )}
                
                {/* Empty State Helper */}
                {bomData.length === 0 && (
